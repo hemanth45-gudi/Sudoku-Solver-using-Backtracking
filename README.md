@@ -150,6 +150,11 @@ Sudoku-Solver/
 ![Sudoku Solver Output](assets/p2-project.png)
 ![Sudoku Solver Output](assets/p3-project.png)
 ![Sudoku Solver Output](assets/p4-project.png)
+![Sudoku Solver Output](assets/p5-project.png)
+![Sudoku Solver Output](assets/p6-project.png)
+![Sudoku Solver Output](assets/p7-project.png)
+![Sudoku Solver Output](assets/p8-project.png)
+![Sudoku Solver Output](assets/p9-project.png)
 
 ---
 
