@@ -5,9 +5,9 @@
 ![DSA](https://img.shields.io/badge/DSA-Backtracking-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-A **production-level Sudoku Solver** built using the **Backtracking algorithm** with step-by-step visualization, performance analysis, and interactive GUI.
+A **production-level Sudoku Solver** built using **Backtracking and Dancing Links (DLX)** algorithms with step-by-step visualization, performance benchmarking, and interactive GUI.
 
-This project demonstrates core **Data Structures and Algorithms (DSA)** concepts including recursion, constraint satisfaction, and efficient search space exploration with a modern user interface and professional software architecture.
+This project demonstrates core **Data Structures and Algorithms (DSA)** concepts including recursion, constraint satisfaction, optimization techniques, and efficient search space exploration with a modern software architecture.
 
 ---
 
@@ -15,13 +15,15 @@ This project demonstrates core **Data Structures and Algorithms (DSA)** concepts
 
 * 🔄 Step-by-step solving visualization
 * ⚡ Backtracking + DLX algorithm support
-* 📊 Performance metrics (steps, time, backtracks)
+* 📊 Performance benchmarking (time, memory, steps, backtracks)
+* 🔬 Algorithm comparison (Backtracking vs DLX)
 * ✏️ Custom puzzle input
 * 🎨 Modern production UI with theme support
 * 🔍 Constraint validation (row, column, subgrid)
 * 🧪 Unit testing support
-* 🌐 FastAPI backend support
+* 🌐 FastAPI backend API
 * 🐳 Docker deployment ready
+* 📝 Logging and configuration management
 
 ---
 
@@ -29,15 +31,16 @@ This project demonstrates core **Data Structures and Algorithms (DSA)** concepts
 
 This project implements a Sudoku Solver that automatically solves a given 9×9 puzzle while satisfying all Sudoku constraints.
 
-The solver demonstrates:
+The system demonstrates:
 
 * Recursion and backtracking techniques
 * Constraint satisfaction problem solving
 * Algorithm visualization
-* Performance measurement
-* Interactive user experience
+* Performance measurement and benchmarking
+* Algorithm comparison (Backtracking vs DLX)
+* Interactive user interface
 
-It combines algorithmic concepts with real-world application design.
+It combines theoretical algorithm concepts with real-world application design.
 
 ---
 
@@ -56,10 +59,22 @@ cd sudoku-solver
 pip install -r requirements.txt
 ```
 
-### Run Application
+### Run Application (GUI)
 
 ```
 python main.py
+```
+
+### Run API Server
+
+```
+uvicorn src.api.main:app --reload
+```
+
+### Run Tests
+
+```
+pytest
 ```
 
 ---
@@ -68,10 +83,8 @@ python main.py
 
 ### Solver Interface
 
-![Sudoku-solver-using-Backtracking](assets/p1-project.png)
-![Sudoku-solver-using-Backtracking](assets/p2-project.png)
-![Sudoku-solver-using-Backtracking](assets/p3-project.png)
-
+![Sudoku-Solver-using-Backtracking](assets/p1-project.png)
+![Sudoku-Solver-using-Backtracking](assets/p2-project.png)
 
 ```
 assets/images/solver.png
@@ -79,18 +92,22 @@ assets/images/solver.png
 
 ### Custom Puzzle Input
 
-![Sudoku-solver-using-Backtracking](assets/p4-project.png)
-![Sudoku-solver-using-Backtracking](assets/p5-project.png)
-![Sudoku-solver-using-Backtracking](assets/p6-project.png)
-![Sudoku-solver-using-Backtracking](assets/p7-project.png)
-![Sudoku-solver-using-Backtracking](assets/p8-project.png)
-![Sudoku-solver-using-Backtracking](assets/p9-project.png)
-![Sudoku-solver-using-Backtracking](assets/p10-project.png)
-
+![Sudoku-Solver-using-Backtracking](assets/p3project.png)
 
 ```
 assets/images/input.png
 ```
+
+### Performance Benchmark
+
+![Sudoku-Solver-using-Backtracking](assets/p4project.png)
+![Sudoku-Solver-using-Backtracking](assets/p5project.png)
+![Sudoku-Solver-using-Backtracking](assets/p6project.png)
+![Sudoku-Solver-using-Backtracking](assets/p7project.png)
+![Sudoku-Solver-using-Backtracking](assets/p8project.png)
+![Sudoku-Solver-using-Backtracking](assets/p9project.png)
+![Sudoku-Solver-using-Backtracking](assets/p10project.png)
+
 
 ---
 
@@ -100,18 +117,25 @@ assets/images/input.png
 * Backtracking Algorithm
 * Dancing Links (DLX)
 * Recursion
-* Pygame (GUI)
-* FastAPI (API Support)
+* Pygame (GUI Visualization)
+* FastAPI (API Service)
 * Pytest (Testing)
 * Docker (Deployment)
-* Logging & Configuration Management
+* Logging System
+* Performance Benchmarking
 * Matrix / 2D Array Operations
 
 ---
 
-## 🧠 Algorithm — Backtracking
+## 🧠 Algorithms Used
 
-Backtracking is a recursive problem-solving technique that explores all possible solutions and eliminates invalid ones.
+### Backtracking
+
+Backtracking is a recursive problem-solving technique that explores possible solutions and eliminates invalid ones.
+
+### Dancing Links (DLX)
+
+DLX is an optimized algorithm for solving exact cover problems and provides faster performance for complex Sudoku puzzles.
 
 Sudoku is a **constraint satisfaction problem** where each solution must satisfy:
 
@@ -119,14 +143,32 @@ Sudoku is a **constraint satisfaction problem** where each solution must satisfy
 * Column constraint
 * 3×3 subgrid constraint
 
-### Working Steps
+---
 
-1. Find an empty cell in the grid.
-2. Try values from 1–9.
-3. Check if the value satisfies Sudoku rules.
-4. Place value if valid.
-5. Recursively solve remaining cells.
-6. If no solution exists, backtrack and try another value.
+## 🔬 Algorithm Performance Comparison
+
+The project compares multiple solving approaches:
+
+### Backtracking
+
+* Recursive search
+* Constraint validation
+* Explores search space systematically
+
+### Dancing Links (DLX)
+
+* Exact cover formulation
+* Optimized search
+* Faster for complex puzzles
+
+### Benchmark Metrics
+
+* Execution time
+* Memory usage
+* Steps and backtracks
+* Nodes visited
+
+DLX typically provides faster performance than standard backtracking.
 
 ---
 
@@ -225,7 +267,7 @@ Sudoku-Solver/
 
 ## ⚠️ Limitations
 
-* Designed primarily for 9×9 Sudoku
+* Designed primarily for 9×9 Sudoku puzzles
 * Performance varies with puzzle difficulty
 
 ---
@@ -235,12 +277,9 @@ Sudoku-Solver/
 * Support for different grid sizes
 * Advanced heuristics (MRV, forward checking)
 * Web-based Sudoku interface
-* Performance comparison across algorithms
 
 ---
 
 ## 👨‍💻 Author
 
 **Hemanth Gudi**
-
----
