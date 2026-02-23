@@ -2,7 +2,7 @@
 numpy>=1.24.0
 
 # GUI
-# tkinter is usually built-in, but dependencies like pillow might be needed for textures if added later
+pygame>=2.5.0
 Pillow>=10.0.0
 
 # API

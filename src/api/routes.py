@@ -48,7 +48,7 @@ async def solve_dlx(request: SudokuBoard):
         algorithm="DLX",
         execution_time=bench.execution_time,
         memory_usage_mb=bench.memory_usage_mb,
-        steps=bench.nodes_visited,
+        steps=bench.steps,
         backtracks=bench.backtracks,
         message="Solved successfully"
     )
