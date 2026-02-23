@@ -68,16 +68,9 @@ python main.py
 
 ### Solver Interface
 
-![Sudoku-solver-using-Backtracking](p1-project/solver.png)
-![Sudoku-solver-using-Backtracking](p2-project/solver.png)
-![Sudoku-solver-using-Backtracking](p3-project/solver.png)
-![Sudoku-solver-using-Backtracking](p4-project/solver.png)
-![Sudoku-solver-using-Backtracking](p5-project/solver.png)
-![Sudoku-solver-using-Backtracking](p6-project/solver.png)
-![Sudoku-solver-using-Backtracking](p7-project/solver.png)
-![Sudoku-solver-using-Backtracking](p8-project/solver.png)
-![Sudoku-solver-using-Backtracking](p9-project/solver.png)
-![Sudoku-solver-using-Backtracking](p10-project/solver.png)
+![Sudoku-solver-using-Backtracking](assets/p1-project.png)
+![Sudoku-solver-using-Backtracking](assets/p2-project.png)
+![Sudoku-solver-using-Backtracking](assets/p3-project.png)
 
 
 ```
@@ -86,7 +79,14 @@ assets/images/solver.png
 
 ### Custom Puzzle Input
 
-(Add screenshot here)
+![Sudoku-solver-using-Backtracking](assets/p4-project.png)
+![Sudoku-solver-using-Backtracking](assets/p5-project.png)
+![Sudoku-solver-using-Backtracking](assets/p6-project.png)
+![Sudoku-solver-using-Backtracking](assets/p7-project.png)
+![Sudoku-solver-using-Backtracking](assets/p8-project.png)
+![Sudoku-solver-using-Backtracking](assets/p9-project.png)
+![Sudoku-solver-using-Backtracking](assets/p10-project.png)
+
 
 ```
 assets/images/input.png
