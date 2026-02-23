@@ -1,515 +1,453 @@
 import pygame
 import sys
+import os
+import json
 import time as _time
-from ..utils.constants import *
-from ..utils.helpers import *
-from ..utils.generator import generate_new_puzzle
-from ..solver.backtracking_solver import VisualSolver
+from src.utils.constants import *
+from src.utils.helpers import *
+from src.utils.generator import generate_new_puzzle
+from src.solver.backtracking_solver import BacktrackingSolver, VisualSolver
+from src.solver.validator import SudokuValidator
+from src.logging_config import logger
+from src.config import settings
 
 class SudokuGUI:
     def __init__(self):
         pygame.font.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("SUDOKU SOLVER - BACKTRACKING")
+        pygame.display.set_caption("SUDOKU SOLVER - PRODUCTION EDITION")
         
         try:
             img = pygame.image.load('assets/icon.png')
             pygame.display.set_icon(img)
-        except:
-            pass
+        except Exception:
+            logger.warning("Icon not found, using default")
 
-        self.font1  = pygame.font.SysFont("comicsans", 40)
-        self.font2  = pygame.font.SysFont("comicsans", 20)
-        self.font3  = pygame.font.SysFont("comicsans", 16)
-        self.font_h = pygame.font.SysFont("comicsans", 22, bold=True)
+        # Fonts
+        self._setup_fonts()
 
-        # ── Play mode state ────────────────────────────────────────────
-        self.mode = 'play'          # 'play' | 'custom_input'
-        self.new_game('medium')
-
-        self.message       = ""
-        self.message_color = BLACK
-        self.color_idx     = 0
-
-        # ── Solver state ───────────────────────────────────────────────
-        self.solve_speed   = 0.05
-        self.visualizing   = False
-        self.current_pos   = None
-        self.cell_state    = {}
-
-        # ── Live stats ─────────────────────────────────────────────────
-        self.live_steps      = 0
-        self.live_backtracks = 0
-        self.live_time       = 0.0
-        self.solve_start     = 0.0
+        # State
+        self.theme_name = settings.DEFAULT_THEME
+        self.theme = THEMES[self.theme_name]
+        self.mode = 'play'
+        self.solve_speed = settings.ANIMATION_SPEED
+        self.visualizing = False
+        self.current_pos = None
+        self.cell_state = {}
+        
+        self.row = 0
+        self.col = 0
+        self.flag_box = False
+        self.message = "Welcome! Use R to Reset, V to Solve."
+        self.message_color = Colors.FOCUS
+        self.solution_grid = None
 
         self.solver = VisualSolver(self)
+        self.new_game('medium')
 
-        # ── Custom input mode state ────────────────────────────────────
-        self.custom_grid  = [[0]*9 for _ in range(9)]   # grid being typed
-        self.custom_row   = 0
-        self.custom_col   = 0
+        # Custom input state
+        self.custom_grid = [[0]*9 for _ in range(9)]
+        self.custom_row = 0
+        self.custom_col = 0
+        
+        # Interactive Layout State
+        self.buttons = {} # Stores Rect objects for collision detection
+        self.ui_padding = 10
+        self.btn_row_y = 530
 
-    # ════════════════════════════════════════════════════════════════════
-    # GAME MANAGEMENT
-    # ════════════════════════════════════════════════════════════════════
+    def _setup_fonts(self):
+        """Initializes fonts with fallbacks."""
+        # Main grid numbers
+        self.font_main = pygame.font.SysFont("Arial", 36, bold=True)
+        # Buttons and smaller UI elements
+        self.font_btn = pygame.font.SysFont("Arial", 18, bold=True)
+        self.font_small = pygame.font.SysFont("Arial", 14, bold=True)
+        self.font_title = pygame.font.SysFont("Arial", 22, bold=True)
+
+    def toggle_theme(self):
+        self.theme_name = "light" if self.theme_name == "dark" else "dark"
+        self.theme = THEMES[self.theme_name]
+        logger.info(f"Theme toggled to {self.theme_name}")
+
     def new_game(self, diff):
-        self.grid       = generate_new_puzzle(diff)
+        self.grid = generate_new_puzzle(diff)
         self.start_grid = [row[:] for row in self.grid]
-        self.row = self.col = self.val = self.flag_box = 0
+        self.row = self.col = 0
+        self.flag_box = False
+        self.cell_state.clear()
+        self.reset_stats()
+        logger.info(f"New game started: {diff}")
+        
+        # Pre-solve for "Correct Number" feedback
+        solver_temp = BacktrackingSolver()
+        self.solution_grid = solver_temp.solve(self.grid)
 
     def reset_stats(self):
-        self.live_steps = self.live_backtracks = 0
-        self.live_time  = 0.0
+        self.solver.steps = 0
+        self.solver.backtracks = 0
 
-    # ════════════════════════════════════════════════════════════════════
-    # DRAWING – SHARED HELPERS
-    # ════════════════════════════════════════════════════════════════════
-    def draw_button(self, text, rect, color, text_color=WHITE, font=None):
-        f = font or self.font2
-        pygame.draw.rect(self.screen, color, rect, border_radius=6)
-        surf = f.render(text, 1, text_color)
-        self.screen.blit(surf, surf.get_rect(center=(rect[0]+rect[2]//2, rect[1]+rect[3]//2)))
+    # ── Drawing Helpers ──────────────────────────────────────────────────
+
+    def draw_button(self, text, rect_dim, color, text_color=None, font=None, btn_id=None):
+        """Draws a themed button and returns its Rect."""
+        rect = pygame.Rect(rect_dim)
+        if btn_id: self.buttons[btn_id] = rect
+        
+        # Draw background
+        pygame.draw.rect(self.screen, color, rect, border_radius=8)
+        # Subtle border
+        pygame.draw.rect(self.screen, self.theme["grid"], rect, 1, border_radius=8)
+        
+        t_color = text_color if text_color else self.theme["text"]
+        f = font if font else self.font_btn
+        surf = f.render(text, True, t_color)
+        self.screen.blit(surf, surf.get_rect(center=rect.center))
+        return rect
 
     def draw_grid_lines(self, origin_x=0, origin_y=0):
         for i in range(10):
-            thick = 5 if i % 3 == 0 else 1
-            pygame.draw.line(self.screen, BLACK,
-                             (origin_x,            origin_y + i*DIF),
-                             (origin_x + SCREEN_WIDTH, origin_y + i*DIF), thick)
-            pygame.draw.line(self.screen, BLACK,
+            thick = 5 if i % 3 == 0 else 2
+            color = self.theme["text"] if i % 3 == 0 else self.theme["grid"]
+            pygame.draw.line(self.screen, color,
+                             (origin_x, origin_y + i*DIF),
+                             (origin_x + 500, origin_y + i*DIF), thick)
+            pygame.draw.line(self.screen, color,
                              (origin_x + i*DIF, origin_y),
-                             (origin_x + i*DIF, origin_y + SCREEN_WIDTH), thick)
+                             (origin_x + i*DIF, origin_y + 500), thick)
 
-    # ════════════════════════════════════════════════════════════════════
-    # DRAWING – PLAY MODE
-    # ════════════════════════════════════════════════════════════════════
+    def draw_highlights(self):
+        """Highlights the row and column of the selected cell."""
+        if not self.flag_box: return
+        
+        # Row highlight
+        s = pygame.Surface((500, DIF), pygame.SRCALPHA)
+        s.fill(Colors.HIGHLIGHT)
+        self.screen.blit(s, (0, self.row * DIF))
+        
+        # Col highlight
+        s = pygame.Surface((DIF, 500), pygame.SRCALPHA)
+        s.fill(Colors.HIGHLIGHT)
+        self.screen.blit(s, (self.col * DIF, 0))
+
     def draw_cells(self):
         for r in range(9):
             for c in range(9):
-                if self.grid[r][c] != 0:
-                    bg = COLORS[self.color_idx]
-                    if (r, c) in self.cell_state:
-                        st = self.cell_state[(r, c)]
-                        if st == "TRYING":    bg = TRYING_COLOR
-                        elif st == "BACKTRACK": bg = BACKTRACK_COLOR
+                val = self.grid[r][c]
+                if val != 0 or (r, c) in self.cell_state:
+                    bg = self.theme["surface"]
+                    st = self.cell_state.get((r, c))
+                    
+                    if st == "TRYING": bg = Colors.TRYING
+                    elif st == "BACKTRACK": bg = Colors.BACKTRACK
+                    elif st == "STABLE": bg = Colors.STABLE
+                    
+                    if bg != self.theme["surface"]:
+                        pygame.draw.rect(self.screen, bg, (c*DIF+1, r*DIF+1, DIF-1, DIF-1))
 
-                    pygame.draw.rect(self.screen, bg, (c*DIF, r*DIF, DIF+1, DIF+1))
+                    if val != 0:
+                        # Original numbers use theme text color, others use success color
+                        is_original = self.start_grid[r][c] != 0
+                        
+                        if is_original:
+                            color = self.theme["text"]
+                        else:
+                            # For solver-placed numbers, ensure contrast against the cell background
+                            # Use contrast helper if background is a solving state (Trying/Backtrack/Stable)
+                            if bg != self.theme["surface"]:
+                                color = get_contrast_text_color(bg)
+                            else:
+                                color = self.theme["success"]
+                        
+                        surf = self.font_main.render(str(val), True, color)
+                        self.screen.blit(surf, surf.get_rect(center=(c*DIF+DIF/2, r*DIF+DIF/2)))
 
-                    num_color = BLACK if self.start_grid[r][c] != 0 else BLUE
-                    surf = self.font1.render(str(self.grid[r][c]), 1, num_color)
-                    self.screen.blit(surf, surf.get_rect(center=(c*DIF+DIF/2, r*DIF+DIF/2)))
-
+                # Solver focus
                 if self.current_pos == (r, c):
-                    pygame.draw.rect(self.screen, ORANGE, (c*DIF, r*DIF, DIF+1, DIF+1), 5)
+                    pygame.draw.rect(self.screen, self.theme["focus"], (c*DIF, r*DIF, DIF+1, DIF+1), 4)
 
-    def draw_selection_box(self):
-        r, c = self.row, self.col
-        if not (0 <= r < 9 and 0 <= c < 9):
-            return
-        for i in range(2):
-            pygame.draw.line(self.screen, ORANGE,
-                             (c*DIF-3,        (r+i)*DIF),
-                             (c*DIF+DIF+3,    (r+i)*DIF), 7)
-            pygame.draw.line(self.screen, ORANGE,
-                             ((c+i)*DIF, r*DIF),
-                             ((c+i)*DIF, r*DIF+DIF), 7)
+    # ── UI Layouts ───────────────────────────────────────────────────────
 
-    def draw_stats_panel(self):
-        """Live stats bar shown at the very bottom of the play screen."""
-        panel_y = 660
-        # Background strip
-        pygame.draw.rect(self.screen, (230, 230, 230), (0, panel_y, SCREEN_WIDTH, 40))
-        pygame.draw.line(self.screen, BLACK, (0, panel_y), (SCREEN_WIDTH, panel_y), 2)
-
-        if self.visualizing:
-            elapsed = round(_time.time() - self.solve_start, 1)
-            stats = f"⏱ {elapsed}s   |   Steps: {self.live_steps}   |   Backtracks: {self.live_backtracks}"
-            col = (0, 100, 200)
-        elif self.solver.total_time > 0:
-            stats = (f"Solved in {self.solver.total_time}s   |   "
-                     f"Steps: {self.solver.rec_steps}   |   "
-                     f"Backtracks: {self.solver.backtrack_steps}")
-            col = (0, 140, 0)
-        else:
-            stats = "Press V or SOLVE to start  |  Speed: 1=Slow  2=Med  3=Fast"
-            col = (100, 100, 100)
-
-        surf = self.font3.render(stats, 1, col)
-        self.screen.blit(surf, surf.get_rect(center=(SCREEN_WIDTH//2, panel_y+20)))
+    def draw_legend(self, y_pos):
+        legend_y = y_pos
+        items = [("Trying", Colors.TRYING), ("Backtrack", Colors.BACKTRACK), ("Solved", Colors.STABLE)]
+        for i, (text, color) in enumerate(items):
+            pygame.draw.rect(self.screen, color, (10 + i*160, legend_y, 20, 20), border_radius=4)
+            surf = self.font_small.render(text, True, self.theme["text"])
+            self.screen.blit(surf, (40 + i*160, legend_y + 2))
 
     def draw_play_ui(self):
-        """Draws the full play-mode UI."""
-        self.screen.fill(WHITE)
+        self.screen.fill(self.theme["bg"])
+        self.buttons.clear()
+        
+        self.draw_highlights()
         self.draw_cells()
         self.draw_grid_lines()
+        
         if self.flag_box:
-            self.draw_selection_box()
+            pygame.draw.rect(self.screen, self.theme["accent"], (self.col*DIF, self.row*DIF, DIF+1, DIF+1), 4)
 
-        # ── instruction text ──
-        t1 = self.font3.render("D:Default  R:Reset  C:Color  G:New  I:Custom Input", 1, BLACK)
-        t2 = self.font3.render("Levels: E:Easy  M:Medium  H:Hard  |  Speed: 1 2 3", 1, BLACK)
-        self.screen.blit(t1, (8, 508))
-        self.screen.blit(t2, (8, 528))
+        # ── Bottom controls ──────────────────────────────────────────────────
+        btn_y = self.btn_row_y
+        padding = 6
+        # Narrower width for 500px screen
+        available_w = 500 - 20 - (4 * padding)
+        btn_w = available_w // 5
+        
+        btns = [
+             ("Solve (V)", Colors.SUCCESS, WHITE, "solve"),
+             ("Reset (R)", Colors.ERROR, WHITE, "reset"),
+             ("New (G)", self.theme["accent"], WHITE, "new"),
+             ("Custom (C)", self.theme["grid"], self.theme["text"], "custom"),
+             ("Theme (T)", self.theme["grid"], self.theme["text"], "theme"),
+        ]
+        
+        for i, (text, color, t_color, b_id) in enumerate(btns):
+            x = 10 + i * (btn_w + padding)
+            self.draw_button(text, (x, btn_y, btn_w, 38), color, t_color, btn_id=b_id)
 
-        # ── buttons ──
-        self.draw_button("SOLVE (V)", ( 8, 548, 148, 38), (0, 150, 0))
-        self.draw_button("RESET (R)", (162, 548, 148, 38), (180, 30, 30))
-        self.draw_button("NEW (G)",   (316, 548, 160, 38), (0, 0, 170))
+        # Stats Row
+        text_y = btn_y + 60
+        stats = f"Steps: {self.solver.steps} | Backtracks: {self.solver.backtracks}"
+        surf_stats = self.font_small.render(stats, True, self.theme["text"])
+        self.screen.blit(surf_stats, (10, text_y))
 
-        # ── custom input button ──
-        self.draw_button("CUSTOM INPUT (I)", (8, 592, 470, 34),
-                         (60, 60, 60), font=self.font3)
+        # Message Area
+        msg_y = text_y + 30
+        msg_surf = self.font_btn.render(self.message, True, self.message_color)
+        self.screen.blit(msg_surf, (10, msg_y))
 
-        # ── status message ──
-        if self.message:
-            surf = self.font2.render(self.message, 1, self.message_color)
-            self.screen.blit(surf, (8, 632))
+        # Legend & Instructions
+        self.draw_legend(msg_y + 45)
+        
+        inst_y = 550 + 175 # Near bottom
+        inst = "E:Easy M:Med H:Hard | I:Import O:Export"
+        surf_inst = self.font_small.render(inst, True, self.theme["text"])
+        self.screen.blit(surf_inst, (10, inst_y))
 
-        # ── live stats panel ──
-        self.draw_stats_panel()
-
-    # ════════════════════════════════════════════════════════════════════
-    # DRAWING – CUSTOM INPUT MODE
-    # ════════════════════════════════════════════════════════════════════
     def draw_custom_input_ui(self):
-        self.screen.fill((245, 245, 245))
-
-        # Title
-        title = self.font_h.render("CUSTOM PUZZLE INPUT  (0 = empty cell)", 1, (30, 30, 30))
-        self.screen.blit(title, title.get_rect(center=(SCREEN_WIDTH//2, 18)))
-
-        # Grid background
-        pygame.draw.rect(self.screen, WHITE, (0, 30, SCREEN_WIDTH, SCREEN_WIDTH))
-
+        self.screen.fill(self.theme["bg"])
+        self.buttons.clear()
+        
         # Draw cells
         for r in range(9):
             for c in range(9):
                 val = self.custom_grid[r][c]
-                cell_x = c * DIF
-                cell_y = 30 + r * DIF
-
-                # Highlight selected cell
                 if r == self.custom_row and c == self.custom_col:
-                    pygame.draw.rect(self.screen, (200, 230, 255),
-                                     (cell_x+1, cell_y+1, DIF-1, DIF-1))
+                    pygame.draw.rect(self.screen, self.theme["focus"], (c*DIF, r*DIF, DIF, DIF))
                 elif val != 0:
-                    pygame.draw.rect(self.screen, (220, 240, 220),
-                                     (cell_x+1, cell_y+1, DIF-1, DIF-1))
-
+                    pygame.draw.rect(self.screen, self.theme["surface"], (c*DIF, r*DIF, DIF, DIF))
+                
                 if val != 0:
-                    surf = self.font1.render(str(val), 1, (20, 80, 20))
-                    self.screen.blit(surf, surf.get_rect(
-                        center=(cell_x + DIF/2, cell_y + DIF/2)))
+                    bg_color = self.theme["focus"] if (r == self.custom_row and c == self.custom_col) else self.theme["surface"]
+                    color = get_contrast_text_color(bg_color)
+                    surf = self.font_main.render(str(val), True, color)
+                    self.screen.blit(surf, surf.get_rect(center=(c*DIF+DIF/2, r*DIF+DIF/2)))
 
-        # Grid lines (shifted down by 30 to leave header space)
-        for i in range(10):
-            thick = 5 if i % 3 == 0 else 1
-            pygame.draw.line(self.screen, BLACK,
-                             (0,            30 + i*DIF),
-                             (SCREEN_WIDTH, 30 + i*DIF), thick)
-            pygame.draw.line(self.screen, BLACK,
-                             (i*DIF, 30),
-                             (i*DIF, 30 + SCREEN_WIDTH), thick)
-
-        # Buttons
-        self.draw_button("▶  SOLVE IT",
-                         (8,  518, 230, 42), (0, 150, 0))
-        self.draw_button("CLEAR GRID",
-                         (248, 518, 115, 42), (160, 160, 160), text_color=BLACK)
-        self.draw_button("← BACK",
-                         (368, 518, 120, 42), (180, 30, 30))
-
-        # Validation message
-        if self.message:
-            surf = self.font2.render(self.message, 1, self.message_color)
-            self.screen.blit(surf, (8, 568))
-
-        # Instructions
-        hint = self.font3.render(
-            "Click a cell, type 1-9 to enter  |  0 or Del to clear  |  Arrow keys to navigate",
-            1, (100, 100, 100))
-        self.screen.blit(hint, hint.get_rect(center=(SCREEN_WIDTH//2, 598)))
-
-        # Conflict highlights
+        self.draw_grid_lines()
         self._highlight_custom_conflicts()
 
+        # Custom Mode Buttons
+        btn_y = self.btn_row_y
+        padding = 8
+        available_w = 500 - 20 - (3 * padding)
+        btn_w = available_w // 4
+        
+        btns = [
+             ("Solve (S)", Colors.SUCCESS, WHITE, "c_solve"),
+             ("Clear (C)", self.theme["grid"], self.theme["text"], "c_clear"),
+             ("Import (I)", self.theme["accent"], WHITE, "c_import"),
+             ("Export (O)", self.theme["accent"], WHITE, "c_export")
+        ]
+        
+        for i, (text, color, t_color, b_id) in enumerate(btns):
+            x = 10 + i * (btn_w + padding)
+            self.draw_button(text, (x, btn_y, btn_w, 38), color, t_color, btn_id=b_id)
+        
+        # Back Button Row
+        self.draw_button("Return (Esc)", (10, btn_y + 48, 140, 38), Colors.ERROR, WHITE, btn_id="c_back")
+        
+        title = self.font_title.render("CUSTOM INPUT", True, self.theme["accent"])
+        self.screen.blit(title, (160, btn_y + 55))
+        
         pygame.display.update()
 
     def _highlight_custom_conflicts(self):
-        """Draw a red border around conflicting cells in custom input mode."""
-        conflict_cells = set()
-        g = self.custom_grid
-        for r in range(9):
-            for c in range(9):
-                v = g[r][c]
-                if v == 0:
-                    continue
-                # Check row
-                for c2 in range(9):
-                    if c2 != c and g[r][c2] == v:
-                        conflict_cells.add((r, c)); conflict_cells.add((r, c2))
-                # Check col
-                for r2 in range(9):
-                    if r2 != r and g[r2][c] == v:
-                        conflict_cells.add((r, c)); conflict_cells.add((r2, c))
-                # Check box
-                br, bc = (r//3)*3, (c//3)*3
-                for dr in range(3):
-                    for dc in range(3):
-                        nr, nc = br+dr, bc+dc
-                        if (nr, nc) != (r, c) and g[nr][nc] == v:
-                            conflict_cells.add((r, c)); conflict_cells.add((nr, nc))
-
-        for (r, c) in conflict_cells:
-            pygame.draw.rect(self.screen, RED,
-                             (c*DIF, 30+r*DIF, DIF, DIF), 4)
-
-    def _custom_has_conflicts(self):
         g = self.custom_grid
         for r in range(9):
             for c in range(9):
                 v = g[r][c]
                 if v == 0: continue
-                for c2 in range(9):
-                    if c2 != c and g[r][c2] == v: return True
-                for r2 in range(9):
-                    if r2 != r and g[r2][c] == v: return True
-                br, bc = (r//3)*3, (c//3)*3
-                for dr in range(3):
-                    for dc in range(3):
-                        nr, nc = br+dr, bc+dc
-                        if (nr, nc) != (r, c) and g[nr][nc] == v: return True
-        return False
+                # Basic conflict check
+                conflict = False
+                for i in range(9):
+                    if (g[r][i] == v and i != c) or (g[i][c] == v and i != r):
+                        conflict = True; break
+                if not conflict:
+                    br, bc = (r//3)*3, (c//3)*3
+                    for dr in range(3):
+                        for dc in range(3):
+                            if g[br+dr][bc+dc] == v and (br+dr != r or bc+dc != c):
+                                conflict = True; break
+                
+                if conflict:
+                    pygame.draw.rect(self.screen, Colors.ERROR, (c*DIF, r*DIF, DIF, DIF), 4)
 
-    # ════════════════════════════════════════════════════════════════════
-    # SOLVER
-    # ════════════════════════════════════════════════════════════════════
+    # ── Puzzle I/O ───────────────────────────────────────────────────────
+
+    def export_puzzle(self):
+        try:
+            data = {"board": self.start_grid}
+            with open("puzzle_export.json", "w") as f:
+                json.dump(data, f)
+            self.message = "Puzzle exported to puzzle_export.json"
+            self.message_color = Colors.SUCCESS
+            logger.info("Puzzle exported")
+        except Exception as e:
+            self.message = f"Export failed: {str(e)}"
+            self.message_color = Colors.ERROR
+
+    def import_puzzle(self):
+        if not os.path.exists("puzzle_import.json"):
+            self.message = "Create puzzle_import.json first!"
+            self.message_color = Colors.WARNING
+            return
+        try:
+            with open("puzzle_import.json", "r") as f:
+                data = json.load(f)
+                self.grid = data["board"]
+                self.start_grid = [row[:] for row in self.grid]
+                self.message = "Puzzle imported successfully!"
+                self.message_color = Colors.SUCCESS
+                logger.info("Puzzle imported")
+        except Exception as e:
+            self.message = f"Import failed: {str(e)}"
+            self.message_color = Colors.ERROR
+
+    # ── Main Loop and Logic ──────────────────────────────────────────────
+
     def start_solve(self):
-        self.visualizing  = True
-        self.solve_start  = _time.time()
-        self.live_steps   = 0
-        self.live_backtracks = 0
-        self.message      = ""
-        self.solver.reset_stats()
-
-        solve_grid = [row[:] for row in self.start_grid]
-        success = self.solver.run_solve(solve_grid)
-
+        self.visualizing = True
+        self.message = "Solving..."
+        self.message_color = self.theme["accent"]
+        self.cell_state.clear()
+        
+        # Run visual solve
+        success = self.solver.run_solve(self.grid)
+        
         if success:
-            self.grid = solve_grid
-            self.message       = "[OK] Puzzle solved!"
-            self.message_color = (0, 150, 0)
+            self.message = "Puzzle Solved!"
+            self.message_color = Colors.SUCCESS
         else:
-            self.message       = "[!!] No solution found for this puzzle"
-            self.message_color = RED
-
+            self.message = "No Solution Found"
+            self.message_color = Colors.ERROR
+            
         self.visualizing = False
         self.current_pos = None
 
-    # ════════════════════════════════════════════════════════════════════
-    # INPUT HANDLING
-    # ════════════════════════════════════════════════════════════════════
-    def handle_input(self, val):
-        if self.start_grid[self.row][self.col] != 0:
-            self.message       = "Cannot change original puzzle numbers"
-            self.message_color = RED
-            self.val = 0
-            return
-        if val:
-            if valid(self.grid, self.row, self.col, val):
-                self.grid[self.row][self.col] = val
-                self.message       = "[OK] Correct entry"
-                self.message_color = (0, 128, 0)
-                if check_complete(self.grid):
-                    self.message       = "Congrats! Puzzle completed!"
-                    self.message_color = (0, 200, 0)
-            else:
-                self.message       = "[X] Invalid move for this cell"
-                self.message_color = RED
-            self.val = 0
-
-    # ════════════════════════════════════════════════════════════════════
-    # UPDATE DISPLAY (called by solver during visualization too)
-    # ════════════════════════════════════════════════════════════════════
     def update_display(self):
-        # Update live stats counters from solver
-        if self.visualizing:
-            self.live_steps      = self.solver.rec_steps
-            self.live_backtracks = self.solver.backtrack_steps
-
         self.draw_play_ui()
         pygame.display.update()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
 
-        if self.visualizing:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit(); sys.exit()
-
-    # ════════════════════════════════════════════════════════════════════
-    # MAIN LOOP
-    # ════════════════════════════════════════════════════════════════════
     def run(self):
-        clock   = pygame.time.Clock()
-        running = True
-
-        while running:
-            # ── PLAY MODE ──────────────────────────────────────────────
+        clock = pygame.time.Clock()
+        while True:
             if self.mode == 'play':
                 self.draw_play_ui()
-                pygame.display.update()
-
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
-                        running = False
-
+                        pygame.quit(); sys.exit()
                     elif event.type == pygame.MOUSEBUTTONDOWN:
                         pos = event.pos
-
-                        # ── Buttons (y 548-586) ──
-                        btn_y = 548 <= pos[1] <= 586
-                        print(f"Click: x={pos[0]}, y={pos[1]}, btn_zone={btn_y}")
-                        if btn_y:
-                            if pos[0] <= 156:        # SOLVE
-                                print("SOLVE clicked")
-                                self.start_solve(); continue
-                            elif pos[0] <= 310:      # RESET
-                                print("RESET clicked")
-                                self.grid = [r[:] for r in self.start_grid]
-                                self.cell_state.clear(); self.current_pos = None
-                                self.reset_stats()
-                                self.solver.total_time = 0
-                                self.message       = "Board reset to starting state"
-                                self.message_color = (0, 100, 180); continue
-                            elif pos[0] <= 476:      # NEW
-                                print("NEW clicked")
-                                self.new_game('medium'); self.reset_stats()
-                                self.solver.total_time = 0
-                                self.message       = "New puzzle generated!"
-                                self.message_color = (0, 100, 180); continue
-
-                        # ── Custom Input button (y 592‒625) ──
-                        if 592 <= pos[1] <= 626:
-                            self.mode = 'custom_input'
-                            self.custom_grid = [[0]*9 for _ in range(9)]
-                            self.custom_row = self.custom_col = 0
-                            self.message = ""; continue
-
-                        # ── Cell selection ──
-                        coord = get_cord(pos)
-                        if coord:
-                            self.row, self.col = coord
-                            self.flag_box = 1
+                        if pos[1] < 500:
+                            self.row, self.col = int(pos[1]//DIF), int(pos[0]//DIF)
+                            self.flag_box = True
                         else:
-                            self.flag_box = 0
+                            # Button Click Handling
+                            if self.buttons.get("solve") and self.buttons["solve"].collidepoint(pos):
+                                self.start_solve()
+                            elif self.buttons.get("reset") and self.buttons["reset"].collidepoint(pos):
+                                self.grid = [r[:] for r in self.start_grid]
+                            elif self.buttons.get("new") and self.buttons["new"].collidepoint(pos):
+                                self.new_game('medium')
+                            elif self.buttons.get("custom") and self.buttons["custom"].collidepoint(pos):
+                                self.mode = 'custom_input'
+                            elif self.buttons.get("theme") and self.buttons["theme"].collidepoint(pos):
+                                self.toggle_theme()
 
                     elif event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_LEFT:  self.col -= 1; self.flag_box = 1
-                        if event.key == pygame.K_RIGHT: self.col += 1; self.flag_box = 1
-                        if event.key == pygame.K_UP:    self.row -= 1; self.flag_box = 1
-                        if event.key == pygame.K_DOWN:  self.row += 1; self.flag_box = 1
-                        self.row %= 9; self.col %= 9
-
-                        if pygame.K_1 <= event.key <= pygame.K_9:
-                            self.val = event.key - pygame.K_0
-                        if event.key in (pygame.K_BACKSPACE, pygame.K_0, pygame.K_DELETE):
-                            if self.start_grid[self.row][self.col] == 0:
+                        if event.key == pygame.K_v: self.start_solve()
+                        elif event.key == pygame.K_t: self.toggle_theme()
+                        elif event.key == pygame.K_g: self.new_game('medium')
+                        elif event.key == pygame.K_r: self.grid = [r[:] for r in self.start_grid]
+                        elif event.key == pygame.K_o: self.export_puzzle()
+                        elif event.key == pygame.K_i: self.import_puzzle()
+                        elif event.key == pygame.K_c: self.mode = 'custom_input'
+                        elif event.key == pygame.K_e: self.new_game('easy')
+                        elif event.key == pygame.K_m: self.new_game('medium')
+                        elif event.key == pygame.K_h: self.new_game('hard')
+                        elif pygame.K_1 <= event.key <= pygame.K_9:
+                            if self.flag_box and self.start_grid[self.row][self.col] == 0:
+                                val = event.key - pygame.K_0
+                                if SudokuValidator.is_safe_move(self.grid, self.row, self.col, val):
+                                    self.grid[self.row][self.col] = val
+                                    # Provide specific feedback against the solution
+                                    if self.solution_grid and self.solution_grid[self.row][self.col] == val:
+                                        self.message = "Correct Number!"; self.message_color = Colors.SUCCESS
+                                    else:
+                                        self.message = "Valid Move!"; self.message_color = Colors.TRYING
+                                else:
+                                    self.message = "Invalid Move!"; self.message_color = Colors.ERROR
+                        elif event.key in (pygame.K_BACKSPACE, pygame.K_0, pygame.K_DELETE):
+                            if self.flag_box and self.start_grid[self.row][self.col] == 0:
                                 self.grid[self.row][self.col] = 0
 
-                        if event.key == pygame.K_r:
-                            self.grid = [r[:] for r in self.start_grid]
-                            self.reset_stats(); self.solver.total_time = 0
-                        if event.key == pygame.K_v: self.start_solve()
-                        if event.key == pygame.K_g:
-                            self.new_game('medium'); self.reset_stats()
-                            self.solver.total_time = 0
-                        if event.key == pygame.K_i:
-                            self.mode = 'custom_input'
-                            self.custom_grid = [[0]*9 for _ in range(9)]
-                            self.custom_row = self.custom_col = 0
-                            self.message = ""
-                        if event.key == pygame.K_d:
-                            self.grid = self.start_grid = [r[:] for r in MEDIUM_GRID]
-                        if event.key == pygame.K_e: self.new_game('easy')
-                        if event.key == pygame.K_m: self.new_game('medium')
-                        if event.key == pygame.K_h: self.new_game('hard')
-                        if event.key == pygame.K_c:
-                            self.color_idx = (self.color_idx + 1) % len(COLORS)
-                        if event.key == pygame.K_1: self.solve_speed = 0.15
-                        if event.key == pygame.K_2: self.solve_speed = 0.05
-                        if event.key == pygame.K_3: self.solve_speed = 0.01
-
-                if self.val:
-                    self.handle_input(self.val)
-
-            # ── CUSTOM INPUT MODE ───────────────────────────────────────
             elif self.mode == 'custom_input':
                 self.draw_custom_input_ui()
-
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
-                        running = False
-
+                        pygame.quit(); sys.exit()
                     elif event.type == pygame.MOUSEBUTTONDOWN:
                         pos = event.pos
-                        # ── SOLVE IT button (y 518‒559) ──
-                        if 518 <= pos[1] <= 560:
-                            if 8 <= pos[0] <= 238:        # SOLVE IT
-                                if self._custom_has_conflicts():
-                                    self.message       = "✘  Fix conflicts (red cells) before solving"
-                                    self.message_color = RED
-                                else:
-                                    # Load custom grid as new puzzle
-                                    self.grid       = [r[:] for r in self.custom_grid]
-                                    self.start_grid = [r[:] for r in self.custom_grid]
-                                    self.reset_stats()
-                                    self.solver.total_time = 0
-                                    self.mode       = 'play'
-                                    self.message    = "Custom puzzle loaded — press SOLVE (V) to solve!"
-                                    self.message_color = (0, 120, 200)
-                                    self.flag_box   = 0
-                            elif 248 <= pos[0] <= 363:    # CLEAR GRID
+                        if pos[1] < 500:
+                            self.custom_row, self.custom_col = int(pos[1]//DIF), int(pos[0]//DIF)
+                        else:
+                            # Custom Button Click Handling
+                            if self.buttons.get("c_solve") and self.buttons["c_solve"].collidepoint(pos):
+                                self.grid = [r[:] for r in self.custom_grid]
+                                self.start_grid = [r[:] for r in self.custom_grid]
+                                self.mode = 'play'; self.start_solve()
+                            elif self.buttons.get("c_clear") and self.buttons["c_clear"].collidepoint(pos):
                                 self.custom_grid = [[0]*9 for _ in range(9)]
-                                self.message = ""
-                            elif 368 <= pos[0] <= 488:    # BACK
+                            elif self.buttons.get("c_import") and self.buttons["c_import"].collidepoint(pos):
+                                self.import_puzzle()
+                            elif self.buttons.get("c_export") and self.buttons["c_export"].collidepoint(pos):
+                                self.start_grid = [r[:] for r in self.custom_grid]
+                                self.export_puzzle()
+                            elif self.buttons.get("c_back") and self.buttons["c_back"].collidepoint(pos):
                                 self.mode = 'play'
-                                self.message = ""
-
-                        # ── Cell click (y 30‒530) ──
-                        elif 30 <= pos[1] <= 30 + SCREEN_WIDTH:
-                            c = int(pos[0] // DIF)
-                            r = int((pos[1] - 30) // DIF)
-                            if 0 <= r < 9 and 0 <= c < 9:
-                                self.custom_row, self.custom_col = r, c
 
                     elif event.type == pygame.KEYDOWN:
-                        r, c = self.custom_row, self.custom_col
-                        if event.key == pygame.K_LEFT:  self.custom_col = (c-1) % 9
-                        if event.key == pygame.K_RIGHT: self.custom_col = (c+1) % 9
-                        if event.key == pygame.K_UP:    self.custom_row = (r-1) % 9
-                        if event.key == pygame.K_DOWN:  self.custom_row = (r+1) % 9
-
                         if pygame.K_1 <= event.key <= pygame.K_9:
-                            self.custom_grid[r][c] = event.key - pygame.K_0
-                            self.message = ""
-                        if event.key in (pygame.K_0, pygame.K_BACKSPACE, pygame.K_DELETE):
-                            self.custom_grid[r][c] = 0
-                            self.message = ""
-                        if event.key == pygame.K_ESCAPE:
-                            self.mode = 'play'; self.message = ""
-                        if event.key == pygame.K_RETURN:
-                            # Same as SOLVE IT
-                            if not self._custom_has_conflicts():
-                                self.grid       = [r2[:] for r2 in self.custom_grid]
-                                self.start_grid = [r2[:] for r2 in self.custom_grid]
-                                self.reset_stats(); self.solver.total_time = 0
-                                self.mode       = 'play'
-                                self.message    = "Custom puzzle loaded — press SOLVE (V) to solve!"
-                                self.message_color = (0, 120, 200)
-                            else:
-                                self.message       = "✘  Fix conflicts first!"
-                                self.message_color = RED
+                            self.custom_grid[self.custom_row][self.custom_col] = event.key - pygame.K_0
+                        elif event.key in (pygame.K_0, pygame.K_BACKSPACE, pygame.K_DELETE):
+                            self.custom_grid[self.custom_row][self.custom_col] = 0
+                        elif event.key == pygame.K_UP: self.custom_row = (self.custom_row - 1) % 9
+                        elif event.key == pygame.K_DOWN: self.custom_row = (self.custom_row + 1) % 9
+                        elif event.key == pygame.K_LEFT: self.custom_col = (self.custom_col - 1) % 9
+                        elif event.key == pygame.K_RIGHT: self.custom_col = (self.custom_col + 1) % 9
+                        elif event.key == pygame.K_s:
+                            self.grid = [r[:] for r in self.custom_grid]
+                            self.start_grid = [r[:] for r in self.custom_grid]
+                            self.mode = 'play'; self.start_solve()
+                        elif event.key == pygame.K_c: self.custom_grid = [[0]*9 for _ in range(9)]
+                        elif event.key == pygame.K_i: self.import_puzzle()
+                        elif event.key == pygame.K_o:
+                            self.start_grid = [r[:] for r in self.custom_grid]
+                            self.export_puzzle()
+                        elif event.key == pygame.K_ESCAPE: self.mode = 'play'
 
+            pygame.display.update()
             clock.tick(60)
-
-        pygame.quit()

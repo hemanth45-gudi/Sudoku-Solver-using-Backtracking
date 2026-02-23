@@ -10,8 +10,10 @@ References:
 """
 
 import time
-from typing import Optional
-
+from typing import Optional, List, Tuple
+from src.solver.validator import SudokuValidator
+from src.solver.benchmarker import Benchmarker
+from src.logging_config import logger
 
 # ---------------------------------------------------------------------------
 # Column / Node data structures
@@ -50,40 +52,36 @@ class ColumnNode(Node):
 class DLXSolver:
     """
     Solves 9×9 Sudoku using Algorithm X with Dancing Links (DLX).
-
-    Constraint types (4 * 81 = 324 columns total):
-      0–80   : cell constraint   – each cell has exactly one digit
-      81–161 : row constraint    – each row contains each digit once
-      162–242: column constraint – each column contains each digit once
-      243–323: box constraint    – each 3×3 box contains each digit once
+    Production-ready with validation and benchmarking.
     """
 
     COLS = 324          # total constraint columns
     N = 9               # grid size
 
     def __init__(self):
-        self.solution_rows: list[int] = []
-        self.result: Optional[list[list[int]]] = None
+        self.solution_rows: List[int] = []
+        self.result: Optional[List[List[int]]] = None
         self.nodes_visited: int = 0
         self.backtracks: int = 0
         self.solve_time: float = 0.0
+        self.benchmarker = Benchmarker()
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
-    def solve(self, board: list[list[int]]) -> Optional[list[list[int]]]:
+    def solve(self, board: List[List[int]]) -> Optional[List[List[int]]]:
         """
         Solve a 9×9 Sudoku board (0 = empty cell).
-
         Returns the solved board (list[list[int]]) or None if unsolvable.
         """
+        if not SudokuValidator.is_valid_board(board):
+            logger.error("Initial board state is invalid")
+            return None
+
         self.nodes_visited = 0
         self.backtracks = 0
+        self.solve_time = 0.0
         self.result = None
         self.solution_rows = []
 
-        start = time.perf_counter()
+        self.benchmarker.start_benchmark()
 
         # Build the exact-cover matrix
         header, row_map = self._build_matrix(board)
@@ -91,23 +89,22 @@ class DLXSolver:
         # Run Algorithm X
         self._search(header)
 
-        self.solve_time = time.perf_counter() - start
-
         if self.result is not None:
-            return self._decode(self.result, row_map)
+            solved_board = self._decode(self.result, row_map)
+            bench = self.benchmarker.end_benchmark("DLX", self.nodes_visited, self.backtracks)
+            self.solve_time = bench.execution_time
+            return solved_board
+            
+        logger.warning("DLX: No solution found for the provided puzzle")
         return None
 
-    # ------------------------------------------------------------------
-    # Matrix Construction
-    # ------------------------------------------------------------------
-
-    def _build_matrix(self, board: list[list[int]]):
+    def _build_matrix(self, board: List[List[int]]) -> Tuple[ColumnNode, List[Tuple[int, int, int]]]:
         """Build the sparse exact-cover matrix for the given board state."""
         N = self.N
 
         # Create column headers
         header = ColumnNode("root")
-        col_headers: list[ColumnNode] = []
+        col_headers: List[ColumnNode] = []
         for i in range(self.COLS):
             c = ColumnNode(str(i))
             c.left = header.left
@@ -117,7 +114,7 @@ class DLXSolver:
             col_headers.append(c)
 
         # row_map[row_id] -> (r, c, d)  so we can decode the solution
-        row_map: list[tuple[int, int, int]] = []
+        row_map: List[Tuple[int, int, int]] = []
 
         for r in range(N):
             for c in range(N):
@@ -137,7 +134,7 @@ class DLXSolver:
                         243 + box * N + (d - 1),     # box constraint
                     ]
 
-                    nodes: list[Node] = []
+                    nodes: List[Node] = []
                     for ci in cols4:
                         col_hdr = col_headers[ci]
                         node = Node()
@@ -159,10 +156,6 @@ class DLXSolver:
                         node.right = nodes[(i + 1) % 4]
 
         return header, row_map
-
-    # ------------------------------------------------------------------
-    # Algorithm X (recursive search)
-    # ------------------------------------------------------------------
 
     def _search(self, header: ColumnNode):
         if self.result is not None:
@@ -211,10 +204,6 @@ class DLXSolver:
 
         self._uncover(col)
 
-    # ------------------------------------------------------------------
-    # Cover / Uncover operations (O(1) pointer manipulation)
-    # ------------------------------------------------------------------
-
     def _choose_column(self, header: ColumnNode) -> ColumnNode:
         """Select the column with the fewest 1s (minimum remaining values)."""
         best: Optional[ColumnNode] = None
@@ -255,15 +244,11 @@ class DLXSolver:
         col.right.left = col
         col.left.right = col
 
-    # ------------------------------------------------------------------
-    # Decode solution row IDs → 9×9 board
-    # ------------------------------------------------------------------
-
     def _decode(
         self,
-        solution: list[int],
-        row_map: list[tuple[int, int, int]],
-    ) -> list[list[int]]:
+        solution: List[int],
+        row_map: List[Tuple[int, int, int]],
+    ) -> List[List[int]]:
         board = [[0] * 9 for _ in range(9)]
         for row_id in solution:
             r, c, d = row_map[row_id]

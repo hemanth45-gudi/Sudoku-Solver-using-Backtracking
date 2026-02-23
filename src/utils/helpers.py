@@ -40,3 +40,13 @@ def check_complete(grid):
             if grid[r][c] == 0:
                 return False
     return True
+
+def get_contrast_text_color(bg_color):
+    """
+    Returns BLACK or WHITE text color based on the perceived luminance of bg_color.
+    Uses the WCAG formula: (0.299*R + 0.587*G + 0.114*B)
+    """
+    # Handle RGBA by stripping Alpha
+    r, g, b = bg_color[:3]
+    luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    return (0, 0, 0) if luminance > 0.5 else (255, 255, 255)

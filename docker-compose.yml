@@ -1,0 +1,21 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+      - ./.env:/app/.env
+    environment:
+      - LOG_LEVEL=INFO
+    restart: always
+
+  # Example of how to add a frontend if needed later
+  # gui:
+  #   build: 
+  #     context: .
+  #     dockerfile: Dockerfile.gui
+  #   environment:
+  #     - DISPLAY=${DISPLAY}
+  #   volumes:
+  #     - /tmp/.X11-unix:/tmp/.X11-unix
