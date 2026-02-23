@@ -92,7 +92,7 @@ assets/images/solver.png
 
 ### Custom Puzzle Input
 
-![Sudoku-Solver-using-Backtracking](assets/p3project.png)
+![Sudoku-Solver-using-Backtracking](assets/p3-project.png)
 
 ```
 assets/images/input.png
@@ -100,13 +100,13 @@ assets/images/input.png
 
 ### Performance Benchmark
 
-![Sudoku-Solver-using-Backtracking](assets/p4project.png)
-![Sudoku-Solver-using-Backtracking](assets/p5project.png)
-![Sudoku-Solver-using-Backtracking](assets/p6project.png)
-![Sudoku-Solver-using-Backtracking](assets/p7project.png)
-![Sudoku-Solver-using-Backtracking](assets/p8project.png)
-![Sudoku-Solver-using-Backtracking](assets/p9project.png)
-![Sudoku-Solver-using-Backtracking](assets/p10project.png)
+![Sudoku-Solver-using-Backtracking](assets/p4-project.png)
+![Sudoku-Solver-using-Backtracking](assets/p5-project.png)
+![Sudoku-Solver-using-Backtracking](assets/p6-project.png)
+![Sudoku-Solver-using-Backtracking](assets/p7-project.png)
+![Sudoku-Solver-using-Backtracking](assets/p8-project.png)
+![Sudoku-Solver-using-Backtracking](assets/p9-project.png)
+![Sudoku-Solver-using-Backtracking](assets/p10-project.png)
 
 
 ---
