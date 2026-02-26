@@ -205,19 +205,37 @@ class SudokuGUI:
             x = 10 + i * (btn_w + padding)
             self.draw_button(text, (x, btn_y, btn_w, 38), color, t_color, btn_id=b_id)
 
+        # ── Row 2: Difficulty & IO ───────────────────────────────────────────
+        btn_y2 = btn_y + 45
+        available_w_row2 = 500 - 20 - (4 * padding)
+        btn_w2 = available_w_row2 // 5
+        
+        btns2 = [
+             ("Easy (E)", self.theme["accent"], WHITE, "easy"),
+             ("Medium (M)", self.theme["accent"], WHITE, "med"),
+             ("Hard (H)", self.theme["accent"], WHITE, "hard"),
+             ("Import (I)", self.theme["success"], WHITE, "import"),
+             ("Export (O)", self.theme["success"], WHITE, "export"),
+        ]
+        
+        for i, (text, color, t_color, b_id) in enumerate(btns2):
+            x = 10 + i * (btn_w2 + padding)
+            self.draw_button(text, (x, btn_y2, btn_w2, 38), color, t_color, btn_id=b_id)
+
         # Stats Row
-        text_y = btn_y + 60
-        stats = f"Steps: {self.solver.steps} | Backtracks: {self.solver.backtracks}"
+        text_y = btn_y2 + 55
+        time_ms = int(self.solver.solve_time * 1000)
+        stats = f"Steps: {self.solver.steps} | Backtracks: {self.solver.backtracks} | Time: {time_ms}ms"
         surf_stats = self.font_small.render(stats, True, self.theme["text"])
         self.screen.blit(surf_stats, (10, text_y))
 
         # Message Area
-        msg_y = text_y + 30
+        msg_y = text_y + 25
         msg_surf = self.font_btn.render(self.message, True, self.message_color)
         self.screen.blit(msg_surf, (10, msg_y))
 
         # Legend & Instructions
-        self.draw_legend(msg_y + 45)
+        self.draw_legend(msg_y + 35)
         
         inst_y = 550 + 175 # Near bottom
         inst = "E:Easy M:Med H:Hard | I:Import O:Export"
@@ -296,10 +314,12 @@ class SudokuGUI:
 
     def export_puzzle(self):
         try:
-            data = {"board": self.start_grid}
+            # Choose the correct grid to export based on the current mode
+            target_grid = self.custom_grid if self.mode == 'custom_input' else self.grid
+            data = {"board": target_grid}
             with open("puzzle_export.json", "w") as f:
                 json.dump(data, f)
-            self.message = "Puzzle exported to puzzle_export.json"
+            self.message = f"Saved to puzzle_export.json"
             self.message_color = Colors.SUCCESS
             logger.info("Puzzle exported")
         except Exception as e:
@@ -307,18 +327,37 @@ class SudokuGUI:
             self.message_color = Colors.ERROR
 
     def import_puzzle(self):
-        if not os.path.exists("puzzle_import.json"):
-            self.message = "Create puzzle_import.json first!"
+        # Fallback to export file if import file doesn't exist
+        filename = "puzzle_import.json"
+        if not os.path.exists(filename):
+            filename = "puzzle_export.json"
+            
+        if not os.path.exists(filename):
+            self.message = "No import or export file found!"
             self.message_color = Colors.WARNING
             return
+            
         try:
-            with open("puzzle_import.json", "r") as f:
+            with open(filename, "r") as f:
                 data = json.load(f)
-                self.grid = data["board"]
-                self.start_grid = [row[:] for row in self.grid]
-                self.message = "Puzzle imported successfully!"
+                new_board = data["board"]
+                
+                if self.mode == 'custom_input':
+                    self.custom_grid = [row[:] for row in new_board]
+                    self.message = f"Custom grid loaded from {filename}"
+                else:
+                    self.grid = [row[:] for row in new_board]
+                    self.start_grid = [row[:] for row in self.grid]
+                    self.cell_state.clear()
+                    self.reset_stats()
+                    
+                    # Pre-solve for feedback
+                    solver_temp = BacktrackingSolver()
+                    self.solution_grid = solver_temp.solve(self.grid)
+                    self.message = "Puzzle imported successfully!"
+                
                 self.message_color = Colors.SUCCESS
-                logger.info("Puzzle imported")
+                logger.info(f"Puzzle imported from {filename}")
         except Exception as e:
             self.message = f"Import failed: {str(e)}"
             self.message_color = Colors.ERROR
@@ -345,6 +384,8 @@ class SudokuGUI:
         self.current_pos = None
 
     def update_display(self):
+        if self.visualizing:
+            self.solver.solve_time = _time.perf_counter() - self.solver.start_time
         self.draw_play_ui()
         pygame.display.update()
         for event in pygame.event.get():
@@ -376,6 +417,16 @@ class SudokuGUI:
                                 self.mode = 'custom_input'
                             elif self.buttons.get("theme") and self.buttons["theme"].collidepoint(pos):
                                 self.toggle_theme()
+                            elif self.buttons.get("easy") and self.buttons["easy"].collidepoint(pos):
+                                self.new_game('easy')
+                            elif self.buttons.get("med") and self.buttons["med"].collidepoint(pos):
+                                self.new_game('medium')
+                            elif self.buttons.get("hard") and self.buttons["hard"].collidepoint(pos):
+                                self.new_game('hard')
+                            elif self.buttons.get("import") and self.buttons["import"].collidepoint(pos):
+                                self.import_puzzle()
+                            elif self.buttons.get("export") and self.buttons["export"].collidepoint(pos):
+                                self.export_puzzle()
 
                     elif event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_v: self.start_solve()

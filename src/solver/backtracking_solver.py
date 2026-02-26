@@ -13,6 +13,7 @@ class BacktrackingSolver:
         self.steps = 0
         self.backtracks = 0
         self.solve_time: float = 0.0
+        self.start_time: float = 0.0
         self.benchmarker = Benchmarker()
 
     def solve(self, board: List[List[int]]) -> Optional[List[List[int]]]:
@@ -110,13 +111,16 @@ class VisualSolver(BacktrackingSolver):
         """Wrapper for GUI to start the visual solve."""
         self.steps = 0
         self.backtracks = 0
+        self.solve_time = 0.0
         self.app.cell_state.clear()
         
         if not SudokuValidator.is_valid_board(board):
             logger.error("Initial board state is invalid for visual solve")
             return False
             
+        self.start_time = time.perf_counter()
         self.benchmarker.start_benchmark()
         success = self.visual_solve(board)
-        self.benchmarker.end_benchmark("Visual Backtracking", self.steps, self.backtracks)
+        bench = self.benchmarker.end_benchmark("Visual Backtracking", self.steps, self.backtracks)
+        self.solve_time = bench.execution_time
         return success
